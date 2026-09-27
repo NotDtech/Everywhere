@@ -66,9 +66,9 @@ jobs:
       run: |
         # Checks if tools/installer.iss or tools/setup.iss exists
         if (Test-Path "tools/installer.iss") {
-            iscc tools/installer.iss
+            iscc '/dMyAppVersion="1.0.0"' tools/installer.iss
         } elseif (Test-Path "tools/setup.iss") {
-            iscc tools/setup.iss
+            iscc '/dMyAppVersion="1.0.0"' tools/setup.iss
         } else {
             Write-Host "No .iss script found, skipping EXE installer creation."
         }
