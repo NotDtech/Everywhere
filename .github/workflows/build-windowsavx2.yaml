@@ -1,0 +1,84 @@
+name: Build Everywhere AVX2 (EXE & ZIP)
+
+on:
+  workflow_dispatch: # Allows manual trigger from GitHub web UI
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-and-package:
+    runs-on: windows-latest
+
+    steps:
+    - name: Enable long paths in git
+      run: git config --global core.longpaths true
+
+    - name: Enable Long Paths in Windows OS
+      run: |
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: true
+        lfs: true
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Install Inno Setup
+      shell: pwsh
+      run: |
+        choco install innosetup
+
+    - name: Install Workloads
+      run: dotnet workload restore src/Everywhere.Windows/Everywhere.Windows.csproj
+
+    - name: Restore Dependencies
+      shell: pwsh
+      run: |
+        dotnet restore Everywhere.Windows.slnx -r win-x64
+
+    # Builds the AVX2-optimized binaries directly into ./publish
+    - name: Publish Everywhere.Windows (AVX2)
+      shell: pwsh
+      run: |
+        dotnet publish src/Everywhere.Windows/Everywhere.Windows.csproj `
+          -c Release `
+          -r win-x64 `
+          --self-contained true `
+          -p:InstructionSet="avx2" `
+          -o ./publish `
+          --no-restore
+
+    # 1. Package the binaries into a portable ZIP
+    - name: Create Portable ZIP
+      shell: pwsh
+      run: |
+        Compress-Archive -Path ./publish/* -DestinationPath ./Everywhere-Windows-x64-AVX2.zip
+
+    # 2. Package the binaries into the Setup EXE using Inno Setup
+    - name: Compile Inno Setup Installer
+      shell: pwsh
+      run: |
+        # Checks if tools/installer.iss or tools/setup.iss exists
+        if (Test-Path "tools/installer.iss") {
+            iscc tools/installer.iss
+        } elseif (Test-Path "tools/setup.iss") {
+            iscc tools/setup.iss
+        } else {
+            Write-Host "No .iss script found, skipping EXE installer creation."
+        }
+
+    # Uploads both the ZIP and the generated EXE as GitHub Artifacts
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Everywhere-AVX2-Windows-Builds
+        path: |
+          ./Everywhere-Windows-x64-AVX2.zip
+          ./Output/*.exe
+          ./src/Everywhere.Windows/bin/Release/Output/*.exe
